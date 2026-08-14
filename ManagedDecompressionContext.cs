@@ -5,14 +5,15 @@ namespace XCompression
 {
     public sealed class ManagedDecompressionContext : IDisposable
     {
-        private readonly int _windowBits;
+        private readonly LzxDecoder _decoder;
         private bool _disposed;
 
         public ManagedDecompressionContext(uint windowSize, uint chunkSize)
         {
-            _windowBits = 0;
-            while ((1u << _windowBits) < windowSize)
-                _windowBits++;
+            int windowBits = 0;
+            while ((1u << windowBits) < windowSize)
+                windowBits++;
+            _decoder = new LzxDecoder(windowBits);
             _disposed = false;
         }
 
@@ -29,7 +30,6 @@ namespace XCompression
 
             try
             {
-                var decoder = new LzxDecoder(_windowBits);
                 int totalOutput = 0;
                 int offset = inputOffset;
                 int endOffset = inputOffset + inputCount;
@@ -67,9 +67,12 @@ namespace XCompression
                     using (var inputStream = new MemoryStream(inputBytes, offset, blockSize))
                     using (var outputStream = new MemoryStream(outputBytes, outOff, frameSize))
                     {
-                        int result = decoder.Decompress(inputStream, blockSize, outputStream, frameSize);
+                        int result = _decoder.Decompress(inputStream, blockSize, outputStream, frameSize);
                         if (result != 0)
+                        {
+                            System.Console.Error.WriteLine($"[LZX] frame fail: block={blockSize} frame={frameSize} off={offset - inputOffset} firstFrame={totalOutput==0}");
                             return (ErrorCode)(-1);
+                        }
                         totalOutput += (int)outputStream.Position;
                         outOff += (int)outputStream.Position;
                     }
@@ -78,6 +81,7 @@ namespace XCompression
                 }
 
                 outputCount = totalOutput;
+                inputCount = offset - inputOffset;
                 return ErrorCode.None;
             }
             catch
